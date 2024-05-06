@@ -12,9 +12,29 @@
 </head>
 <body>
   <div>
-    マスキング実験。P1、M、P2の順に再生します。
+    同時マスキング実験。Mの最中にP1を再生します。
   </div>
-  <h3>P1: 逆向マスキング用プローブ</h3>
+  <h3>M: マスク</h3>
+  <div>
+    周波数：1000 Hz（固定値）
+  </div>
+  <div>
+    時間：500 ms（固定値）
+  </div>
+  <div>
+    音圧レベル：<input id="volume1" type="range" min="-100" max="0" step="5" value="0">
+    <div id="volume1value" class="val"></div>
+  </div>
+
+  <h3>P1: プローブ</h3>
+  <div>
+    タイミング：<select id="t0">
+      <option value="0">0</option>
+      <option value="10" selected>10 ms</option>
+      <option value="300">300 ms</option>
+      <option value="490">490 ms</option>
+    </select>
+  </div>
   
   <div>
     周波数： <select id="freq0">
@@ -33,61 +53,6 @@
     音圧レベル：<input id="volume0" type="range" min="-100" max="0" step="1" value="-40">
     <div id="volume0value" class="val"></div>
   </div>
-
-  <h3>P1-M間</h3>
-  <div>
-    間隔：<select id="t0">
-      <option value="0">0</option>
-      <option value="5">5 ms</option>
-      <option value="10" selected>10 ms</option>
-      <option value="20">20 ms</option>
-    </select>
-  </div>
-
-  <h3>M: マスク</h3>
-  <div>
-    周波数：1000 Hz（固定値）
-  </div>
-  <div>
-    時間：250 ms（固定値）
-  </div>
-  <div>
-    音圧レベル：<input id="volume1" type="range" min="-100" max="0" step="5" value="0">
-    <div id="volume1value" class="val"></div>
-  </div>
-
-  <h3>M-P2間</h3>
-  <div>
-    間隔：<select id="t2">
-      <option value="0">0</option>
-      <option value="10" selected>10 ms</option>
-      <option value="30">30 ms</option>
-      <option value="60">60 ms</option>
-      <option value="100">100 ms</option>      
-    </select>
-  </div>
-  
-  
-  <h3>P2: 順向マスキング用プローブ</h3>
-  
-  <div>
-    周波数：<select id="freq2">
-      <option value="800">800 Hz</option>
-      <option value="1000">1000 Hz</option>
-      <option value="1200">1200 Hz</option>
-      <option value="1500" selected>1500 Hz</option>
-      <option value="1800">1800 Hz</option>    
-      <option value="2000">2000 Hz</option>
-    </select>
-  </div>
-  <div>
-    時間：10 ms（固定値）
-  </div>
-  <div>
-    音圧レベル：<input id="volume2" type="range" min="-100" max="0" step="1" value="-40">
-    <div id="volume2value" class="val"></div>
-  </div>
- 
   
   <button id="play">Play</button>
 
@@ -106,8 +71,7 @@
 
   
   function doit(freq0, volume0, t0, dur0,
-                freq1, volume1, t1, dur1,
-                freq2, volume2, t2, dur2) {
+                freq1, volume1, t1, dur1) {
       setup()
 
       gainNode0 = audioContext.createGain()
@@ -118,10 +82,6 @@
       gainNode1.connect(audioContext.destination)
       gainNode1.gain.value = Math.pow(10, volume1 / 20)
 
-      gainNode2 = audioContext.createGain()
-      gainNode2.connect(audioContext.destination)
-      gainNode2.gain.value = Math.pow(10, volume2 / 20)
-      
       const osc0 = audioContext.createOscillator()
       osc0.connect(gainNode0)
       osc0.type = 'sine'
@@ -132,38 +92,25 @@
       osc1.type = 'sine'
       osc1.frequency.value = freq1
 
-      const osc2 = audioContext.createOscillator()
-      osc2.connect(gainNode2)
-      osc2.type = 'sine'
-      osc2.frequency.value = freq2
-
       const t = audioContext.currentTime + 0.2
       osc0.start(t + t0)
       osc0.stop(t + t0 + dur0)
       osc1.start(t + t1)
       osc1.stop(t + t1 + dur1)
-      osc2.start(t + t2)
-      osc2.stop(t + t2 + dur2)
   }
 
   function play() {
       const t0 = Number($$('t0').value) / 1000
-      const t2 = Number($$('t2').value) / 1000
       doit(
-          Number($$('freq0').value),
-          Number($$('volume0').value),
-          0,
-          0.010,
-
           1000,
           Number($$('volume1').value),
-          0.010 + t0,
-          0.250,
-          
-          Number($$('freq2').value),
-          Number($$('volume2').value),
-          0.010 + t0 + 0.250 + t2,
-          0.010
+          0,
+          0.500,
+
+          Number($$('freq0').value),
+          Number($$('volume0').value),
+          t0,
+          0.010,
       )
   }
   
@@ -178,7 +125,7 @@
   }
   setSliderHandler('volume0')  
   setSliderHandler('volume1')
-  setSliderHandler('volume2')
+
   
 </script>
 </body>
