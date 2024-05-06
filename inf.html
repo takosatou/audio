@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Infinity Wave Generator</title>
+<style>
+</style>
+</head>
+<body>
+  <button id="play">Play</button>
+<script>
+  function $$(id) {
+      return document.getElementById(id)
+  }
+
+  let audioContext = null
+  const OSC_NUM = 7
+  const FREQ_START = 20
+  const FREQ_END = 20480
+  const DUR = 60
+  const VOL = 0.05
+  //   0  1  2   3   4   5    6    7    8
+  // 20 40 80 160 320 640 1280 2560 5120 10240
+
+  function startOsc() {
+      const osc = audioContext.createOscillator()
+      const gainNode = audioContext.createGain()
+      osc.connect(gainNode)      
+      gainNode.connect(audioContext.destination)
+
+      osc.type = 'triangle'
+      const t = audioContext.currentTime
+      gainNode.gain.setValueAtTime(0, t)
+      gainNode.gain.linearRampToValueAtTime(VOL, t + DUR / 2)
+      gainNode.gain.setValueAtTime(VOL, t + DUR / 2)
+      gainNode.gain.linearRampToValueAtTime(0, t + DUR)      
+      osc.frequency.setValueAtTime(FREQ_START, t)
+      osc.frequency.exponentialRampToValueAtTime(FREQ_END, t + DUR)
+      osc.start(audioContext.currentTime)
+      osc.stop(audioContext.currentTime + DUR)
+      osc.addEventListener('ended', () => {
+          startOsc()
+      })
+  }
+  
+  function setup() {
+      if (audioContext != null) return
+      
+      audioContext = new AudioContext()
+      for (let i = 0; i < DUR; i += DUR / 10) {
+          setTimeout(startOsc, i * 1000)
+      }
+  }
+  
+  function play() {
+      setup()
+  }
+ 
+  $$('play').addEventListener('click', play)
+  
+</script>
+</body>
+</html>

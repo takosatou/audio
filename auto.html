@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wave Generator to test Human Auditory Characteristics</title>
+<style>
+</style>
+</head>
+<body>
+  <button id="start">開始</button>
+  <button id="got">聞こえた</button>
+  <div id="info"></div>
+  <div>
+    <table id="log" border="1">
+    </table>
+  </div>
+  
+<script>
+  function $$(id) {
+      return document.getElementById(id)
+  }
+
+  const FREQS = [50, 125, 250, 500, 1000, 2000, 4000, 8000, 10000, 12000]
+  const LEVEL_FROM = -100
+  const LEVEL_TO = 0
+  const LEVEL_STEP = 5
+
+  let curFreqInd = null
+  let curLevel = null
+  let timerId = null
+  let log = []
+  
+  let audioContext = null
+  let gainNode = null
+
+  function setup() {
+      if (audioContext != null) return
+      
+      audioContext = new AudioContext()
+      gainNode = audioContext.createGain()
+      gainNode.connect(audioContext.destination)
+  }
+  
+  function play(freq, level) {
+      $$('info').innerHTML = `${freq}Hz  ${level}dB`
+
+      const osc = audioContext.createOscillator()
+      osc.connect(gainNode)
+      osc.type = 'sine'
+      osc.frequency.value = freq
+      gainNode.gain.value = Math.pow(10, Number(level) / 20)
+      
+      osc.start(audioContext.currentTime)
+      osc.stop(audioContext.currentTime + 0.9)
+  }
+
+  function onTick() {
+      if (curFreqInd == null) {
+          curFreqInd = 0
+          curLevel = LEVEL_FROM
+      } else if (curLevel >= LEVEL_TO) {
+          curFreqInd++
+          if (curFreqInd >= FREQS.length) {
+              curFreqInd = null
+              curLevel = null
+              stop()
+              return
+          }
+          curLevel = LEVEL_FROM
+      } else {
+          curLevel += LEVEL_STEP
+      }
+      play(FREQS[curFreqInd], curLevel)
+  }
+
+  function stop() {
+      clearInterval(timerId)
+      timerId = null
+      $$('start').innerHTML = '開始'
+  }
+  
+  function start() {
+      if (timerId != null) {
+          stop()
+          return
+      }
+      setup()
+      
+      $$('start').innerHTML = '停止'
+      curFreqInd = null
+      curLevel = null
+      log = []
+      timerId = setInterval(onTick, 1000)
+  }
+
+  function got() {
+      if (curFreqInd == null) return
+      log.push([FREQS[curFreqInd], curLevel])
+      showLog()
+      curLevel = LEVEL_TO
+  }
+
+  function showLog() {
+      const html = '<tr><th>周波数[Hz]</th><th>音圧レベル[dB]</th></tr>' +
+            log.map(([f, v]) => `<tr><td>${f}</td><td>${v}</td></tr>`).join('')
+      $$('log').innerHTML = html
+  }
+  
+  $$('start').addEventListener('click', start)
+
+  $$('got').addEventListener('click', got)
+    
+  
+</script>
+</body>
+</html>

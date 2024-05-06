@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sweep Sound Generator to test Speaker Characteristics</title>
+<style>
+  #db {
+      display: inline-block;
+  }
+</style>
+</head>
+<body>
+  <h2>スイープ音再生</h2>
+  <button id="play">開始</button>
+  <div>
+    音量：
+    <input id="volume" type="range" min="-100" max="-40" step="5" value="-60">
+    <div id="db">-60</div>dB
+  </div>
+  
+<script>
+  function $$(id) {
+      return document.getElementById(id)
+  }
+
+  const volume = $$('volume')
+  
+  const db = $$('db')
+  let audioContext = null
+  let gainNode = null
+
+  function setup() {
+      if (audioContext != null) return
+      
+      audioContext = new AudioContext()
+      gainNode = audioContext.createGain()
+      gainNode.connect(audioContext.destination)
+      const r = Math.pow(10, Number(volume.value) / 20)
+      gainNode.gain.value = r
+  }
+  
+  function play() {
+      setup()
+      const osc = audioContext.createOscillator()
+      osc.connect(gainNode)
+      osc.type = 'sine'
+      const t = audioContext.currentTime
+      const dur = 25
+      const startFreq = 20
+      const endFreq = 20000
+      osc.frequency.setValueAtTime(startFreq, t)
+      osc.frequency.exponentialRampToValueAtTime(endFreq, t + dur)
+      osc.start(audioContext.currentTime)
+      osc.stop(audioContext.currentTime + dur)
+      
+  }
+
+  function changeVolume(v) {
+      console.log(v)
+      db.innerHTML = String(v)
+      if (gainNode != null) {
+          const r = Math.pow(10, Number(v) / 20)
+          gainNode.gain.value = r
+      }
+  }
+  
+  $$('play').addEventListener('click', play)
+  volume.addEventListener('input', (e) => {
+      changeVolume(e.target.value)
+  })
+  
+</script>
+</body>
+</html>

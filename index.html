@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wave Generator to test Human Auditory Characteristics</title>
+<style>
+  #db {
+      display: inline-block;
+  }
+</style>
+</head>
+<body>
+  <select id="freq">
+    <option value="20">20Hz</option>        
+    <option value="50">50Hz</option>    
+    <option value="125">125Hz</option>    
+    <option value="250">250Hz</option>
+    <option value="500">500Hz</option>
+    <option value="1000">1000Hz</option>
+    <option value="2000">2000Hz</option>
+    <option value="4000" selected>4000Hz</option>
+    <option value="8000">8000Hz</option>    
+    <option value="10000">10000Hz</option>
+    <option value="12000">12000Hz</option>
+    <option value="15000">15000Hz</option>
+    <option value="20000">20000Hz</option>        
+  </select>
+  <div>
+    <input id="volume" type="range" min="-100" max="0" step="5" value="-60">
+    <div id="db">-40</div>dB
+  </div>
+  <button id="play">Play</button>
+  
+<script>
+  function $$(id) {
+      return document.getElementById(id)
+  }
+
+  let audioContext = null
+  let gainNode = null
+
+  function setup() {
+      if (audioContext != null) return
+      
+      audioContext = new AudioContext()
+      gainNode = audioContext.createGain()
+      gainNode.connect(audioContext.destination)
+      const r = Math.pow(10, Number($$('volume').value) / 20)
+      gainNode.gain.value = r
+  }
+  
+  function play() {
+      setup()
+      const osc = audioContext.createOscillator()
+      osc.connect(gainNode)
+      osc.type = 'sine'
+      osc.frequency.value = Number($$('freq').value)
+      osc.start(audioContext.currentTime)
+      osc.stop(audioContext.currentTime + 1.0)      
+  }
+
+  function changeVolume(v) {
+      console.log(v)
+      $$('db').innerHTML = String(v)
+      if (gainNode != null) {
+          const r = Math.pow(10, Number(v) / 20)
+          gainNode.gain.value = r
+      }
+  }
+  
+  $$('play').addEventListener('click', play)
+  $$('volume').addEventListener('input', (e) => {
+      changeVolume(e.target.value)
+  })
+  
+</script>
+</body>
+</html>

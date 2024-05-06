@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Audio Spectrum Analyser</title>
+<style>
+  h3 { margin-bottom: 0 }
+</style>
+</head>
+<body>
+<h3>スペアナ</h3>
+<button id="start">開始</button>
+<div id="main" style="display: none">
+  <select id="inputs"></select>
+  <div>  
+    <button id="clear">ピーク履歴消去</button>
+  </div>
+  <div>  
+    <canvas id="canvas" width="640" height="300">
+    </canvas>
+  </div>
+  <h3>スィープ音源</h3>  
+  <div>
+    <button id="sweep">スイープ(20Hz～20kHz)</button>
+  </div>
+
+  <h3>単音源</h3>  
+  <div>
+    <select id="freq">
+      <option value="20">20Hz</option>        
+      <option value="50">50Hz</option>    
+      <option value="125">125Hz</option>    
+      <option value="250">250Hz</option>
+      <option value="500">500Hz</option>
+      <option value="1000">1000Hz</option>
+      <option value="2000">2000Hz</option>
+      <option value="4000" selected>4000Hz</option>
+      <option value="8000">8000Hz</option>    
+      <option value="10000">10000Hz</option>
+      <option value="12000">12000Hz</option>
+      <option value="15000">15000Hz</option>
+      <option value="20000">20000Hz</option>        
+    </select>
+    <button id="play">再生</button>
+  </div>
+
+  <div>
+    音量：
+    <input id="volume" type="range" min="-100" max="-30" step="5" value="-60">
+    <div id="db" style="display: inline-block">-60</div>dB
+  </div>
+  
+</div>
+
+<script>
+  function $$(id) {
+      return document.getElementById(id)
+  }
+
+  let audioContext = null
+  let analyser = null
+  let dataArray = null
+
+  let ctx = null
+  let source = null
+  let animation = null
+
+  const W = 640
+  const H = 300
+  const FFTSIZE = 2048   // 8192 // 4096
+  const BUFSIZE = FFTSIZE / 2
+  const OFFSET = -Math.log10(1 / BUFSIZE)
+
+  function setup(constraint) {
+      if (audioContext != null) {
+          delete source
+          delete analyser
+          delete audioContext
+          delete dataArray
+      }
+      
+      audioContext = new AudioContext()
+      console.log(audioContext.sampleRate)
+      analyser = audioContext.createAnalyser()
+      analyser.fftSize = FFTSIZE
+      analyser.smoothingTimeConstant = 0
+      dataArray = new Uint8Array(BUFSIZE)
+      history = new Uint8Array(BUFSIZE)
+      gainNode = audioContext.createGain()
+      gainNode.connect(audioContext.destination)
+      gainNode.gain.value = Math.pow(10, Number($$('volume').value) / 20)
+
+      clearHistory()
+      ctx = $$('canvas').getContext('2d')
+
+      navigator.mediaDevices
+          .getUserMedia(constraint)
+          .then((stream) => {
+              source = audioContext.createMediaStreamSource(stream)
+              source.connect(analyser)
+              if (devices == null) {
+                  setupDevices()
+              }
+              if (animation == null) {
+                  draw()                  
+              }
+          })
+  }
+
+  
+  function changeInput(e) {
+      setup({
+          audio: {
+              deviceId: e.target.value
+          }
+      })
+  }
+
+  function freq2x(freq) {
+      return (Math.log10(freq / BUFSIZE) + OFFSET) / OFFSET * W
+  }
+  
+  function draw() {
+      animation = requestAnimationFrame(draw)
+      
+      analyser.getByteFrequencyData(dataArray)
+
+      ctx.fillStyle = '#000'
+      ctx.fillRect(0, 0, W, H)
+
+      ctx.fillStyle = '#fff'
+      ctx.strokeStyle = '#888'
+      for (let i = 0; i < FREQS.length; i++) {
+          ctx.beginPath()
+          const x = freq2x(BUFSIZE * FREQS[i] / 24000)
+          ctx.moveTo(x, 10)
+          ctx.lineTo(x, H)
+          ctx.stroke()
+          ctx.fillText(XLABEL[i], x - 10, 10)
+      }
+      for (let i = 0; i < DBS.length; i++) {
+          ctx.beginPath()
+          const y = H - (100 + DBS[i]) / 70 * 255
+          ctx.moveTo(0, y)
+          ctx.lineTo(W, y)
+          ctx.stroke()
+          ctx.fillText(DBS[i] + 'dB', 0, y - 4)
+      }
+      
+      ctx.beginPath()
+      ctx.strokeStyle = '#fff'
+      ctx.moveTo(0, H - dataArray[0])
+      if (history[0] < dataArray[0]) {
+          history[0] = dataArray[0]
+      }
+
+      for (let i = 1; i < BUFSIZE; i++) {
+          const x = freq2x(i)
+          ctx.lineTo(x, H - dataArray[i])
+          if (history[i] < dataArray[i]) {
+              history[i] = dataArray[i]
+          }
+      }
+      ctx.stroke()
+      
+      ctx.beginPath()
+      ctx.strokeStyle = 'rgb(255, 0, 0)'
+      ctx.moveTo(0, H - history[0])
+      for (let i = 1; i < BUFSIZE; i++) {
+          const x = freq2x(i)
+          ctx.lineTo(x, H - history[i])
+      }
+      ctx.stroke()
+  }
+
+
+  function play() {
+      const osc = audioContext.createOscillator()
+      osc.connect(analyser)
+      osc.type = 'sine'
+      osc.frequency.value = Number($$('freq').value)
+      
+      osc.addEventListener('ended', () => {
+          $$('play').disabled = false
+      })
+      $$('play').disabled = true
+      osc.start(audioContext.currentTime)
+  }
+  
+  $$('clear').addEventListener('click', clearHistory)  
+  
+  $$('play').addEventListener('click', play)
+  
+  
+</script>
+</body>
+</html>
