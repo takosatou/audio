@@ -16,8 +16,8 @@
   <button id="play">開始</button>
   <div>
     音量：
-    <input id="volume" type="range" min="-100" max="-40" step="5" value="-60">
-    <div id="db">-60</div>dB
+    <input id="volume" type="range" min="-100" max="-30" step="5" value="-40">
+    <div id="db">-40</div>dB
   </div>
   
 <script>
@@ -50,11 +50,16 @@
       const dur = 25
       const startFreq = 20
       const endFreq = 20000
+
+      osc.addEventListener('ended', () => {
+          $$('play').disabled = false
+      })
+      $$('play').disabled = true
+      
       osc.frequency.setValueAtTime(startFreq, t)
       osc.frequency.exponentialRampToValueAtTime(endFreq, t + dur)
       osc.start(audioContext.currentTime)
       osc.stop(audioContext.currentTime + dur)
-      
   }
 
   function changeVolume(v) {

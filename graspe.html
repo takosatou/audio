@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Audio Spectrum Analyser</title>
+<style>
+
+  * {
+    margin: 0;
+    padding: 0;
+  }
+  
+  h3 { margin-bottom: 0 }
+
+  canvas {
+    width: 640px;
+  }
+  
+
+  @media (max-width: 640px) {
+    canvas {
+      width: 100dvw;
+    }
+  }
+</style>
+</head>
+<body>
+<h3>スペアナ</h3>
+<button id="start">開始</button>
+<div id="main" style="display: none">
+  <select id="inputs"></select>
+  <div>  
+    <button id="clear">ピーク履歴消去</button>
+  </div>
+  <div>  
+    <canvas id="canvas" width="640" height="300">
+    </canvas>
+    <canvas id="canvas2" width="640" height="300">
+    </canvas>
+  </div>
+  <h3>スィープ音源</h3>  
+  <div>
+    <button id="sweep">スイープ(20Hz～20kHz)</button>
+  </div>
+
+  <h3>単音源</h3>  
+  <div>
+    <select id="freq">
+      <option value="20">20Hz</option>        
+      <option value="50">50Hz</option>    
+      <option value="125">125Hz</option>    
+      <option value="250">250Hz</option>
+      <option value="500">500Hz</option>
+      <option value="1000">1000Hz</option>
+      <option value="2000">2000Hz</option>
+      <option value="4000" selected>4000Hz</option>
+      <option value="8000">8000Hz</option>    
+      <option value="10000">10000Hz</option>
+      <option value="12000">12000Hz</option>
+      <option value="15000">15000Hz</option>
+      <option value="20000">20000Hz</option>        
+    </select>
+    <button id="play">再生</button>
+  </div>
+
+  <div>
+    音量：
+    <input id="volume" type="range" min="-100" max="-30" step="5" value="-40">
+    <div id="db" style="display: inline-block">-40</div>dB
+  </div>
+  
+</div>
+
+<script>
+  function $$(id) {
+      return document.getElementById(id)
+  }
+
+  let audioContext = null
+  let analyser = null
+  let dataArray = null
+  let history = null
+  let ctx = null
+  let ctx2 = null
+  let canvas2 = null
+  let graphY = 0
+  let source = null
+  let animation = null
+  let devices = null
+  let gainNode = null
+
+  const W = 640
+  const H = 300
+  const FFTSIZE = 2048   // 8192 // 4096
+  const BUFSIZE = FFTSIZE / 2
+  const OFFSET = -Math.log10(1 / BUFSIZE)
+
+  const FREQS = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 15000, 20000]
+  const XLABEL = ['20', '50', '100', '200', '500', '1k', '2k', '5k', '10k', '15k', '20k']
+
+  const DBS = [-100, -90, -80, -70, -60, -50, -40, -30]
+  
+  function setupDevices() {
+      // if (audioContext != null) return
+      navigator.mediaDevices
+          .enumerateDevices()
+      .then((devs) => {
+        console.log(devs)
+              devices = devs
+                  .filter(d => d.kind === 'audioinput')
+                  .map(d => `<option value="${d.deviceId}">${d.label}</option>`)
+              $$('inputs').innerHTML = devices.join('\n')
+          })
+  }
+
+  function clearHistory() {
+      for (let i = 0; i < BUFSIZE; i++) {
+          history[i] = 0
+      }
+  }
+  
+  function setup(constraint) {
+      if (audioContext != null) {
+          delete source
+          delete analyser
+          delete gainNode
+          delete audioContext
+          delete dataArray
+          delete history
+      }
+      
+      audioContext = new AudioContext()
+      console.log(audioContext.sampleRate)
+      analyser = audioContext.createAnalyser()
+      analyser.fftSize = FFTSIZE
+      analyser.smoothingTimeConstant = 0
+      dataArray = new Uint8Array(BUFSIZE)
+      history = new Uint8Array(BUFSIZE)
+      gainNode = audioContext.createGain()
+      gainNode.connect(audioContext.destination)
+      gainNode.gain.value = Math.pow(10, Number($$('volume').value) / 20)
+
+      clearHistory()
+      ctx = $$('canvas').getContext('2d')
+      canvas2 = $$('canvas2')    
+      ctx2 = canvas2.getContext('2d')
+
+      navigator.mediaDevices
+          .getUserMedia(constraint)
+          .then((stream) => {
+              source = audioContext.createMediaStreamSource(stream)
+              source.connect(analyser)
+              if (devices == null) {
+                  setupDevices()
+              }
+              if (animation == null) {
+                  draw()                  
+              }
+          })
+  }
+
+  
+  function changeInput(e) {
+      setup({
+          audio: {
+              deviceId: e.target.value
+          }
+      })
+  }
+
+  function freq2x(freq) {
+      return (Math.log10(freq / BUFSIZE) + OFFSET) / OFFSET * W
+  }
+  
+  function draw() {
+      animation = requestAnimationFrame(draw)
+      
+      analyser.getByteFrequencyData(dataArray)
+
+      ctx.fillStyle = '#000'
+      ctx.fillRect(0, 0, W, H)
+
+      // draw horizontal ticks
+      ctx.fillStyle = '#fff'
+      ctx.strokeStyle = '#888'
+      for (let i = 0; i < FREQS.length; i++) {
+          ctx.beginPath()
+          const x = freq2x(BUFSIZE * FREQS[i] / 24000)
+          ctx.moveTo(x, 10)
+          ctx.lineTo(x, H)
+          ctx.stroke()
+          ctx.fillText(XLABEL[i], x - 10, 10)
+      }
+      // draw virtical ticks
+      for (let i = 0; i < DBS.length; i++) {
+          ctx.beginPath()
+          const y = H - (100 + DBS[i]) / 70 * 255
+          ctx.moveTo(0, y)
+          ctx.lineTo(W, y)
+          ctx.stroke()
+          ctx.fillText(DBS[i] + 'dB', 0, y - 4)
+      }
+
+      // scroll down the spectrum
+      ctx2.drawImage(canvas2, 0, 0, W, H - 1, 0, 1, W, H - 1)
+    
+      // draw curve and update peaks
+      ctx.beginPath()
+      ctx.strokeStyle = '#fff'
+      ctx.moveTo(0, H - dataArray[0])
+      if (history[0] < dataArray[0]) {
+          history[0] = dataArray[0]
+      }
+      let prevX = 0
+      for (let i = 1; i < BUFSIZE; i++) {
+          const x = freq2x(i)
+          const d = dataArray[i]
+        ctx.lineTo(x, H - d)
+        if (history[i] < d) {
+              history[i] = d
+        }
+
+        ctx2.beginPath()        
+        ctx2.strokeStyle = `rgb(${d}, ${d}, ${d})`
+        ctx2.moveTo(prevX, 0)
+        ctx2.lineTo(x, 0)
+        ctx2.stroke()
+        prevX = x;
+      }
+      graphY = (graphY + 1) % H
+
+      ctx.stroke()
+
+
+      // draw peak curve
+      ctx.beginPath()
+      ctx.strokeStyle = 'rgb(255, 0, 0)'
+      ctx.moveTo(0, H - history[0])
+      for (let i = 1; i < BUFSIZE; i++) {
+          const x = freq2x(i)
+          ctx.lineTo(x, H - history[i])
+      }
+      ctx.stroke()
+
+    
+  }
+
+  function sweep() {
+      const osc = audioContext.createOscillator()
+      osc.connect(gainNode)
+      osc.type = 'sine'
+      const t = audioContext.currentTime
+      const dur = 30
+      const startFreq = 20
+      const endFreq = 20000
+
+      osc.addEventListener('ended', () => {
+          $$('sweep').disabled = false
+      })
+      $$('sweep').disabled = true
+      osc.frequency.setValueAtTime(startFreq, t)
+      osc.frequency.exponentialRampToValueAtTime(endFreq, t + dur)
+      osc.start(audioContext.currentTime)
+      osc.stop(audioContext.currentTime + dur)
+  }
+
+  function play() {
+      const osc = audioContext.createOscillator()
+      osc.connect(gainNode)
+      osc.type = 'sine'
+      osc.frequency.value = Number($$('freq').value)
+      
+      osc.addEventListener('ended', () => {
+          $$('play').disabled = false
+      })
+      $$('play').disabled = true
+      osc.start(audioContext.currentTime)
+      osc.stop(audioContext.currentTime + 2.0)
+  }
+  
+  function changeVolume(v) {
+      $$('db').innerHTML = String(v)
+      if (gainNode != null) {
+          const r = Math.pow(10, Number(v) / 20)
+          gainNode.gain.value = r
+      }
+  }
+  
+  $$('start').addEventListener('click', () => {
+      $$('start').style.display = 'none'
+      $$('main').style.display = ''
+      setup({ audio: true })
+  })
+  $$('clear').addEventListener('click', clearHistory)  
+  $$('inputs').addEventListener('change', changeInput)
+
+  $$('volume').addEventListener('input', (e) => {
+      changeVolume(e.target.value)
+  })
+  
+  $$('sweep').addEventListener('click', sweep)
+  $$('play').addEventListener('click', play)
+  
+  
+</script>
+</body>
+</html>
