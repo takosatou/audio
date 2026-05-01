@@ -165,7 +165,10 @@
   function changeInput(e) {
       setup({
           audio: {
-              deviceId: e.target.value
+            deviceId: e.target.value,
+            autoGainControl: false,
+            echoCancellation: false,
+            noiseSuppressoin: false
           }
       })
   }
