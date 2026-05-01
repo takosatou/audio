@@ -6,7 +6,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Audio Spectrum Analyser</title>
 <style>
-
   * {
     margin: 0;
     padding: 0;
@@ -33,6 +32,7 @@
   <select id="inputs"></select>
   <div>  
     <button id="clear">ピーク履歴消去</button>
+    <label>エコーキャンセル<input id="echoCancel" type="checkbox"></label>
   </div>
   <div>  
     <canvas id="canvas" width="640" height="300">
@@ -75,9 +75,42 @@
 
 <script>
   function $$(id) {
-      return document.getElementById(id)
+    return document.getElementById(id)
   }
+  const INFERNO_LUT = [
+  '#000004','#010005','#010106','#010108','#02010A','#02020C','#02020E','#030210',
+  '#040312','#040314','#050417','#060419','#07051C','#08061E','#090621','#0A0723',
+  '#0B0826','#0C0928','#0D0A2B','#0E0B2D','#100C30','#110D32','#120E35','#140F37',
+  '#151039','#17113C','#18123E','#1A1340','#1C1442','#1E1544','#201647','#221748',
+  '#24184A','#26194C','#281A4E','#2A1B50','#2C1C52','#2E1D54','#301E56','#321F58',
+  '#34205A','#36215C','#38225E','#3A2360','#3C2462','#3E2564','#402666','#422768',
+  '#44286A','#46296C','#482A6E','#4A2B70','#4C2C72','#4E2D74','#502E76','#522F78',
+  '#54307A','#56317C','#58327E','#5A3380','#5C3482','#5E3584','#603686','#623788',
+  '#64388A','#66398C','#683A8E','#6A3B90','#6C3C92','#6E3D94','#703E96','#723F98',
+  '#74409A','#76419C','#78429E','#7A43A0','#7C44A2','#7E45A4','#8046A6','#8247A8',
+  '#8448AA','#8649AC','#884AAE','#8A4BB0','#8C4CB2','#8E4DB4','#904EB6','#924FB8',
+  '#9450BA','#9651BC','#9852BE','#9A53C0','#9C54C2','#9E55C4','#A056C6','#A257C8',
+  '#A458CA','#A659CC','#A85ACE','#AA5BD0','#AC5CD2','#AE5DD4','#B05ED6','#B25FD8',
+  '#B460DA','#B661DC','#B862DE','#BA63E0','#BC64E2','#BE65E4','#C066E6','#C267E8',
+  '#C468EA','#C669EC','#C86AEE','#CA6BF0','#CC6CF2','#CE6DF4','#D06EF6','#D26FF8',
+  '#D470FA','#D671FC','#D872FE','#DA73FF','#DC74FF','#DE75FF','#E076FF','#E277FF',
+  '#E478FF','#E679FF','#E87AFF','#EA7BFF','#EC7CFF','#EE7DFF','#F07EFF','#F27FFF',
+  '#F480FF','#F681FF','#F882FF','#FA83FF','#FC84FF','#FE85FF','#FF86FE','#FF87FC',
+  '#FF88FA','#FF89F8','#FF8AF6','#FF8BF4','#FF8CF2','#FF8DF0','#FF8EEE','#FF8FEC',
+  '#FF90EA','#FF91E8','#FF92E6','#FF93E4','#FF94E2','#FF95E0','#FF96DE','#FF97DC',
+  '#FF98DA','#FF99D8','#FF9AD6','#FF9BD4','#FF9CD2','#FF9DD0','#FF9ECE','#FF9FCC',
+  '#FFA0CA','#FFA1C8','#FFA2C6','#FFA3C4','#FFA4C2','#FFA5C0','#FFA6BE','#FFA7BC',
+  '#FFA8BA','#FFA9B8','#FFAAA6','#FFAB94','#FFAC82','#FFAD70','#FFAE5E','#FFAF4C',
+  '#FFB03A','#FFB128','#FFB216','#FFB304','#FFB400','#FFB600','#FFB800','#FFBA00',
+  '#FFBC00','#FFBE00','#FFC000','#FFC200','#FFC400','#FFC600','#FFC800','#FFCA00',
+  '#FFCC00','#FFCE00','#FFD000','#FFD200','#FFD400','#FFD600','#FFD800','#FFDA00',
+  '#FFDC00','#FFDE00','#FFE000','#FFE200','#FFE400','#FFE600','#FFE800','#FFEA00',
+  '#FFEC00','#FFEE00','#FFF000','#FFF200','#FFF400','#FFF600','#FFF800','#FFFA00',
+  '#FFFC00','#FFFE00','#FFFF00','#FFFF0A','#FFFF14','#FFFF1E','#FFFF28','#FFFF32',
+  '#FFFF3C','#FFFF46','#FFFF50','#FFFF5A','#FFFF64','#FFFF6E','#FFFF78','#FFFF82'
+  ]
 
+  let deviceId = null
   let audioContext = null
   let analyser = null
   let dataArray = null
@@ -85,7 +118,7 @@
   let ctx = null
   let ctx2 = null
   let canvas2 = null
-  let graphY = 0
+  let echoCancellation = false
   let source = null
   let animation = null
   let devices = null
@@ -100,212 +133,235 @@
   const FREQS = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 15000, 20000]
   const XLABEL = ['20', '50', '100', '200', '500', '1k', '2k', '5k', '10k', '15k', '20k']
 
+  function xlabel(freq) {
+    if (freq < 1000) return freq.toFixed(1)
+    return (freq / 1000).toFixed(1) + 'k'
+  }
+  
   const DBS = [-100, -90, -80, -70, -60, -50, -40, -30]
   
   function setupDevices() {
-      // if (audioContext != null) return
-      navigator.mediaDevices
-          .enumerateDevices()
+    // if (audioContext != null) return
+    navigator.mediaDevices
+      .enumerateDevices()
       .then((devs) => {
         console.log(devs)
-              devices = devs
-                  .filter(d => d.kind === 'audioinput')
-                  .map(d => `<option value="${d.deviceId}">${d.label}</option>`)
-              $$('inputs').innerHTML = devices.join('\n')
+        devices = devs
+          .filter(d => d.kind === 'audioinput')
+          .map(d => {
+            if (deviceId === null) {
+              deviceId = d.deviceId
+            }
+            return `<option value="${d.deviceId}">${d.label}</option>`
           })
+        $$('inputs').innerHTML = devices.join('\n')
+        setup()
+      })
   }
 
   function clearHistory() {
-      for (let i = 0; i < BUFSIZE; i++) {
-          history[i] = 0
-      }
+    for (let i = 0; i < BUFSIZE; i++) {
+      history[i] = 0
+    }
   }
   
-  function setup(constraint) {
-      if (audioContext != null) {
-          delete source
-          delete analyser
-          delete gainNode
-          delete audioContext
-          delete dataArray
-          delete history
-      }
-      
-      audioContext = new AudioContext()
-      console.log(audioContext.sampleRate)
-      analyser = audioContext.createAnalyser()
-      analyser.fftSize = FFTSIZE
-      analyser.smoothingTimeConstant = 0
-      dataArray = new Uint8Array(BUFSIZE)
-      history = new Uint8Array(BUFSIZE)
-      gainNode = audioContext.createGain()
-      gainNode.connect(audioContext.destination)
-      gainNode.gain.value = Math.pow(10, Number($$('volume').value) / 20)
+  function setup() {
+    if (audioContext != null) {
+      delete source
+      delete analyser
+      delete gainNode
+      delete audioContext
+      delete dataArray
+      delete history
+    }
+    
+    audioContext = new AudioContext()
+    console.log(audioContext.sampleRate)
+    analyser = audioContext.createAnalyser()
+    analyser.fftSize = FFTSIZE
+    analyser.smoothingTimeConstant = 0
+    dataArray = new Uint8Array(BUFSIZE)
+    history = new Uint8Array(BUFSIZE)
+    gainNode = audioContext.createGain()
+    gainNode.connect(audioContext.destination)
+    gainNode.gain.value = Math.pow(10, Number($$('volume').value) / 20)
 
-      clearHistory()
-      ctx = $$('canvas').getContext('2d')
-      canvas2 = $$('canvas2')    
-      ctx2 = canvas2.getContext('2d')
+    clearHistory()
+    ctx = $$('canvas').getContext('2d')
+    canvas2 = $$('canvas2')    
+    ctx2 = canvas2.getContext('2d')
 
-      navigator.mediaDevices
-          .getUserMedia(constraint)
-          .then((stream) => {
-              source = audioContext.createMediaStreamSource(stream)
-              source.connect(analyser)
-              if (devices == null) {
-                  setupDevices()
-              }
-              if (animation == null) {
-                  draw()                  
-              }
-          })
-  }
-
-  
-  function changeInput(e) {
-      setup({
-          audio: {
-            deviceId: e.target.value,
-            autoGainControl: false,
-            echoCancellation: true, // false,
-            noiseSuppressoin: false
-          }
+    navigator.mediaDevices
+      .getUserMedia({
+        audio: {
+          deviceId: deviceId,
+          autoGainControl: false,
+          echoCancellation: echoCancellation,
+          noiseSuppressoin: false
+        }
+      })
+      .then((stream) => {
+        source = audioContext.createMediaStreamSource(stream)
+        source.connect(analyser)
+        if (animation == null) {
+          draw()                  
+        }
       })
   }
-
+  
   function freq2x(freq) {
-      return (Math.log10(freq / BUFSIZE) + OFFSET) / OFFSET * W
+    return (Math.log10(freq / BUFSIZE) + OFFSET) / OFFSET * W
   }
   
   function draw() {
-      animation = requestAnimationFrame(draw)
-      
-      analyser.getByteFrequencyData(dataArray)
-
-      ctx.fillStyle = '#000'
-      ctx.fillRect(0, 0, W, H)
-
-      // draw horizontal ticks
-      ctx.fillStyle = '#fff'
-      ctx.strokeStyle = '#888'
-      for (let i = 0; i < FREQS.length; i++) {
-          ctx.beginPath()
-          const x = freq2x(BUFSIZE * FREQS[i] / 24000)
-          ctx.moveTo(x, 10)
-          ctx.lineTo(x, H)
-          ctx.stroke()
-          ctx.fillText(XLABEL[i], x - 10, 10)
-      }
-      // draw virtical ticks
-      for (let i = 0; i < DBS.length; i++) {
-          ctx.beginPath()
-          const y = H - (100 + DBS[i]) / 70 * 255
-          ctx.moveTo(0, y)
-          ctx.lineTo(W, y)
-          ctx.stroke()
-          ctx.fillText(DBS[i] + 'dB', 0, y - 4)
-      }
-
-      // scroll down the spectrum
-      ctx2.drawImage(canvas2, 0, 0, W, H - 1, 0, 1, W, H - 1)
+    animation = requestAnimationFrame(draw)
     
-      // draw curve and update peaks
+    analyser.getByteFrequencyData(dataArray)
+
+    ctx.fillStyle = '#000'
+    ctx.fillRect(0, 0, W, H)
+
+    // draw horizontal ticks
+    ctx.fillStyle = '#fff'
+    ctx.strokeStyle = '#888'
+    for (let i = 0; i < FREQS.length; i++) {
       ctx.beginPath()
-      ctx.strokeStyle = '#fff'
-      ctx.moveTo(0, H - dataArray[0])
-      if (history[0] < dataArray[0]) {
-          history[0] = dataArray[0]
-      }
-      let prevX = 0
-      for (let i = 1; i < BUFSIZE; i++) {
-          const x = freq2x(i)
-          const d = dataArray[i]
-        ctx.lineTo(x, H - d)
-        if (history[i] < d) {
-              history[i] = d
-        }
-
-        ctx2.beginPath()        
-        ctx2.strokeStyle = `rgb(${d}, ${d}, ${d})`
-        ctx2.moveTo(prevX, 0)
-        ctx2.lineTo(x, 0)
-        ctx2.stroke()
-        prevX = x;
-      }
-      graphY = (graphY + 1) % H
-
+      const x = freq2x(BUFSIZE * FREQS[i] / 24000)
+      ctx.moveTo(x, 10)
+      ctx.lineTo(x, H)
       ctx.stroke()
-
-
-      // draw peak curve
+      //        ctx.fillText(XLABEL[i], x - 10, 10)
+      ctx.fillText(xlabel(FREQS[i]), x - 10, 10)        
+    }
+    // draw virtical ticks
+    for (let i = 0; i < DBS.length; i++) {
       ctx.beginPath()
-      ctx.strokeStyle = 'rgb(255, 0, 0)'
-      ctx.moveTo(0, H - history[0])
-      for (let i = 1; i < BUFSIZE; i++) {
-          const x = freq2x(i)
-          ctx.lineTo(x, H - history[i])
-      }
+      const y = H - (100 + DBS[i]) / 70 * 255
+      ctx.moveTo(0, y)
+      ctx.lineTo(W, y)
       ctx.stroke()
+      ctx.fillText(DBS[i] + 'dB', 0, y - 4)
+    }
 
-    
+    // scroll down the spectrum
+    ctx2.drawImage(canvas2, 0, 0, W, H - 1, 0, 1, W, H - 1)
+
+    let maxI = 0    
+    let max = dataArray[maxI]
+
+    // draw curve and update history
+    ctx.beginPath()
+    ctx.strokeStyle = '#fff'
+    ctx.moveTo(0, H - dataArray[0])
+    if (history[0] < dataArray[0]) {
+      history[0] = dataArray[0]
+    }
+    let prevX = 0
+    for (let i = 1; i < BUFSIZE; i++) {
+      const x = freq2x(i)
+      const d = dataArray[i]
+      ctx.lineTo(x, H - d)
+      if (history[i] < d) {
+        history[i] = d
+      }
+
+      ctx2.beginPath()        
+      ctx2.strokeStyle = INFERNO_LUT[d]
+      ctx2.moveTo(prevX, 0)
+      ctx2.lineTo(x, 0)
+      ctx2.stroke()
+      prevX = x;
+
+      if (max < d) {
+        max = d
+        maxI = i
+      }
+    }
+
+    ctx.stroke()
+
+    // draw history curve
+    ctx.beginPath()
+    ctx.strokeStyle = 'rgb(255, 0, 0)'
+    ctx.moveTo(0, H - history[0])
+    for (let i = 1; i < BUFSIZE; i++) {
+      const x = freq2x(i)
+      ctx.lineTo(x, H - history[i])
+    }
+    ctx.stroke()
+
+    // draw peak
+    const peakX = freq2x(maxI)
+    const peakY = H - max
+    const freq = maxI / BUFSIZE * 24000
+    ctx.fillText(xlabel(freq), peakX, peakY)
   }
 
   function sweep() {
-      const osc = audioContext.createOscillator()
-      osc.connect(gainNode)
-      osc.type = 'sine'
-      const t = audioContext.currentTime
-      const dur = 30
-      const startFreq = 20
-      const endFreq = 20000
+    const osc = audioContext.createOscillator()
+    osc.connect(gainNode)
+    osc.type = 'sine'
+    const t = audioContext.currentTime
+    const dur = 30
+    const startFreq = 20
+    const endFreq = 20000
 
-      osc.addEventListener('ended', () => {
-          $$('sweep').disabled = false
-      })
-      $$('sweep').disabled = true
-      osc.frequency.setValueAtTime(startFreq, t)
-      osc.frequency.exponentialRampToValueAtTime(endFreq, t + dur)
-      osc.start(audioContext.currentTime)
-      osc.stop(audioContext.currentTime + dur)
+    osc.addEventListener('ended', () => {
+      $$('sweep').disabled = false
+    })
+    $$('sweep').disabled = true
+    osc.frequency.setValueAtTime(startFreq, t)
+    osc.frequency.exponentialRampToValueAtTime(endFreq, t + dur)
+    osc.start(audioContext.currentTime)
+    osc.stop(audioContext.currentTime + dur)
   }
 
   function play() {
-      const osc = audioContext.createOscillator()
-      osc.connect(gainNode)
-      osc.type = 'sine'
-      osc.frequency.value = Number($$('freq').value)
-      
-      osc.addEventListener('ended', () => {
-          $$('play').disabled = false
-      })
-      $$('play').disabled = true
-      osc.start(audioContext.currentTime)
-      osc.stop(audioContext.currentTime + 2.0)
+    const osc = audioContext.createOscillator()
+    osc.connect(gainNode)
+    osc.type = 'sine'
+    osc.frequency.value = Number($$('freq').value)
+    
+    osc.addEventListener('ended', () => {
+      $$('play').disabled = false
+    })
+    $$('play').disabled = true
+    osc.start(audioContext.currentTime)
+    osc.stop(audioContext.currentTime + 2.0)
   }
   
   function changeVolume(v) {
-      $$('db').innerHTML = String(v)
-      if (gainNode != null) {
-          const r = Math.pow(10, Number(v) / 20)
-          gainNode.gain.value = r
-      }
+    $$('db').innerHTML = String(v)
+    if (gainNode != null) {
+      const r = Math.pow(10, Number(v) / 20)
+      gainNode.gain.value = r
+    }
   }
   
   $$('start').addEventListener('click', () => {
-      $$('start').style.display = 'none'
-      $$('main').style.display = ''
-      setup({ audio: true })
+    $$('start').style.display = 'none'
+    $$('main').style.display = ''
+    setupDevices()
   })
+
   $$('clear').addEventListener('click', clearHistory)  
-  $$('inputs').addEventListener('change', changeInput)
+  $$('inputs').addEventListener('change', (e) => {
+    deviceId = e.target.value
+    setup()
+  })
+
+  $$('echoCancel').addEventListener('click', (e) => {
+    echoCancel = e.target.checked
+    console.log('echoCancel:' + echoCancel )
+    setup()
+  })
 
   $$('volume').addEventListener('input', (e) => {
-      changeVolume(e.target.value)
+    changeVolume(e.target.value)
   })
   
   $$('sweep').addEventListener('click', sweep)
   $$('play').addEventListener('click', play)
-  
   
 </script>
 </body>
